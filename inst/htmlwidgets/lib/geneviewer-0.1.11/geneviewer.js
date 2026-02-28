@@ -1754,8 +1754,18 @@ container.prototype.coordinates = function (show = true, options = {}) {
 
   const defaultOptions = {
     rotate: -45,
+    topRotate: null,
+    bottomRotate: null,
     yPositionTop: 53,
     yPositionBottom: 48,
+    showTop: true,
+    showBottom: true,
+    topTextAnchor: "end",
+    bottomTextAnchor: "start",
+    topDx: -0.8,
+    topDy: 0.4,
+    bottomDx: 0.8,
+    bottomDy: -0.15,
     tickValuesTop: null,
     tickValuesBottom: null,
     overlapThreshold: 20,
@@ -1776,7 +1786,26 @@ container.prototype.coordinates = function (show = true, options = {}) {
   };
 
   const combinedOptions = mergeOptions.call(this, defaultOptions, 'coordinatesOptions', options);
-  const { rotate, yPositionTop, yPositionBottom, tickValuesBottom, tickValuesTop, ticksFormat, tickStyle, textStyle } = combinedOptions;
+  const {
+    rotate,
+    topRotate,
+    bottomRotate,
+    yPositionTop,
+    yPositionBottom,
+    showTop,
+    showBottom,
+    topTextAnchor,
+    bottomTextAnchor,
+    topDx,
+    topDy,
+    bottomDx,
+    bottomDy,
+    tickValuesBottom,
+    tickValuesTop,
+    ticksFormat,
+    tickStyle,
+    textStyle
+  } = combinedOptions;
 
   // Extract additional options that are not in defaultOptions
   const additionalOptionsTickStyle = extractAdditionalOptions(tickStyle, defaultOptions.tickStyle);
@@ -1863,91 +1892,95 @@ container.prototype.coordinates = function (show = true, options = {}) {
 
   const self = this;
 
-  // Create and configure the top axis
-  const xAxisTop = g.append("g")
-    .attr("transform", "translate(0," + this.yScale(yPositionTop) + ")")
-    .call(d3.axisTop(this.xScale).tickValues(tickValuesTopFinal.map(t => t.value))
-    .tickFormat(d3.format(ticksFormat))
-    );
+  if (showTop) {
+    const resolvedTopRotate = topRotate === null ? rotate : topRotate;
+    const xAxisTop = g.append("g")
+      .attr("transform", "translate(0," + this.yScale(yPositionTop) + ")")
+      .call(d3.axisTop(this.xScale).tickValues(tickValuesTopFinal.map(t => t.value))
+      .tickFormat(d3.format(ticksFormat))
+      );
 
-  xAxisTop.selectAll(".tick")
-    .data(tickValuesTopFinal)
-    .attr("rowID", d => d.rowID)
-    .attr("transform", function (d) {
-      const xOffset = self.xScale(d.value);
-      var currentOverlapSpacing = d.geneTrack ? (d.geneTrack - 1) * self.geneOverlapSpacing : 0;
-      return "translate(" + xOffset + "," + -currentOverlapSpacing + ")";
-    });
+    xAxisTop.selectAll(".tick")
+      .data(tickValuesTopFinal)
+      .attr("rowID", d => d.rowID)
+      .attr("transform", function (d) {
+        const xOffset = self.xScale(d.value);
+        var currentOverlapSpacing = d.geneTrack ? (d.geneTrack - 1) * self.geneOverlapSpacing : 0;
+        return "translate(" + xOffset + "," + -currentOverlapSpacing + ")";
+      });
 
-  xAxisTop.select(".domain").attr("stroke", "none");
+    xAxisTop.select(".domain").attr("stroke", "none");
 
-  xAxisTop.selectAll("text")
-            .data(tickValuesTopFinal)
-            .attr("class", "coordinate")
-            .style("text-anchor", "end")
-            .attr("dx", `${-0.8 + textStyle.x}em`)
-            .attr("dy", `${0.4 + textStyle.y}em`)
-            .attr("transform", "rotate(" + (-rotate) + ")")
-            .style("fill", textStyle.fill)
-            .style("font-size", textStyle.fontSize)
-            .style("font-family", textStyle.fontFamily)
-            .style("cursor", textStyle.cursor)
-            .each(function() {
-                const currentElement = d3.select(this);
-                setStyleFromOptions(currentElement, additionalOptionsTextStyle);
-            });
+    xAxisTop.selectAll("text")
+              .data(tickValuesTopFinal)
+              .attr("class", "coordinate")
+              .style("text-anchor", topTextAnchor)
+              .attr("dx", `${topDx + textStyle.x}em`)
+              .attr("dy", `${topDy + textStyle.y}em`)
+              .attr("transform", "rotate(" + (-resolvedTopRotate) + ")")
+              .style("fill", textStyle.fill)
+              .style("font-size", textStyle.fontSize)
+              .style("font-family", textStyle.fontFamily)
+              .style("cursor", textStyle.cursor)
+              .each(function() {
+                  const currentElement = d3.select(this);
+                  setStyleFromOptions(currentElement, additionalOptionsTextStyle);
+              });
 
-  xAxisTop.selectAll(".tick line")
-    .style("stroke", tickStyle.stroke)
-    .style("stroke-width", tickStyle.strokeWidth)
-    .attr("y2", -tickStyle.lineLength)
-    .each(function () {
-      const currentElement = d3.select(this);
-      setStyleFromOptions(currentElement, additionalOptionsTickStyle);
-    });
+    xAxisTop.selectAll(".tick line")
+      .style("stroke", tickStyle.stroke)
+      .style("stroke-width", tickStyle.strokeWidth)
+      .attr("y2", -tickStyle.lineLength)
+      .each(function () {
+        const currentElement = d3.select(this);
+        setStyleFromOptions(currentElement, additionalOptionsTickStyle);
+      });
+  }
 
-  // Create and configure the bottom axis
-  const xAxisBottom = g.append("g")
-    .attr("transform", "translate(0," + this.yScale(yPositionBottom) + ")")
-    .call(d3.axisBottom(this.xScale).tickValues(tickValuesBottomFinal.map(t => t.value))
-    .tickFormat(d3.format(ticksFormat))
-    );
+  if (showBottom) {
+    const resolvedBottomRotate = bottomRotate === null ? rotate : bottomRotate;
+    const xAxisBottom = g.append("g")
+      .attr("transform", "translate(0," + this.yScale(yPositionBottom) + ")")
+      .call(d3.axisBottom(this.xScale).tickValues(tickValuesBottomFinal.map(t => t.value))
+      .tickFormat(d3.format(ticksFormat))
+      );
 
-  xAxisBottom.selectAll(".tick")
-    .data(tickValuesBottomFinal)
-    .attr("rowID", d => d.rowID)
-    .attr("transform", function (d) {
-       const xOffset = self.xScale(d.value);
-      var currentOverlapSpacing = d.geneTrack ? -(d.geneTrack - 1) * self.geneOverlapSpacing : 0;
-      return "translate(" + xOffset + "," + -currentOverlapSpacing + ")";
-    });
+    xAxisBottom.selectAll(".tick")
+      .data(tickValuesBottomFinal)
+      .attr("rowID", d => d.rowID)
+      .attr("transform", function (d) {
+         const xOffset = self.xScale(d.value);
+        var currentOverlapSpacing = d.geneTrack ? -(d.geneTrack - 1) * self.geneOverlapSpacing : 0;
+        return "translate(" + xOffset + "," + -currentOverlapSpacing + ")";
+      });
 
-  xAxisBottom.select(".domain").attr("stroke", "none");
+    xAxisBottom.select(".domain").attr("stroke", "none");
 
-  xAxisBottom.selectAll("text")
-    .data(tickValuesBottomFinal)
-    .attr("class", "coordinate")
-    .style("text-anchor", "start")
-    .attr("dx", `${0.8 + textStyle.x}em`)
-    .attr("dy", `${-0.15 + textStyle.y}em`)
-    .attr("transform", "rotate(" + (-rotate) + ")")
-    .style("fill", textStyle.fill)
-    .style("font-size", textStyle.fontSize)
-    .style("font-family", textStyle.fontFamily)
-    .style("cursor", textStyle.cursor)
-    .each(function() {
-      const currentElement = d3.select(this);
-            setStyleFromOptions(currentElement, additionalOptionsTextStyle);
-    });
+    xAxisBottom.selectAll("text")
+      .data(tickValuesBottomFinal)
+      .attr("class", "coordinate")
+      .style("text-anchor", bottomTextAnchor)
+      .attr("dx", `${bottomDx + textStyle.x}em`)
+      .attr("dy", `${bottomDy + textStyle.y}em`)
+      .attr("transform", "rotate(" + (-resolvedBottomRotate) + ")")
+      .style("fill", textStyle.fill)
+      .style("font-size", textStyle.fontSize)
+      .style("font-family", textStyle.fontFamily)
+      .style("cursor", textStyle.cursor)
+      .each(function() {
+        const currentElement = d3.select(this);
+              setStyleFromOptions(currentElement, additionalOptionsTextStyle);
+      });
 
-  xAxisBottom.selectAll(".tick line")
-    .style("stroke", tickStyle.stroke)
-    .style("stroke-width", tickStyle.strokeWidth)
-    .attr("y2", tickStyle.lineLength)
-    .each(function () {
-      const currentElement = d3.select(this);
-      setStyleFromOptions(currentElement, additionalOptionsTickStyle);
-    });
+    xAxisBottom.selectAll(".tick line")
+      .style("stroke", tickStyle.stroke)
+      .style("stroke-width", tickStyle.strokeWidth)
+      .attr("y2", tickStyle.lineLength)
+      .each(function () {
+        const currentElement = d3.select(this);
+        setStyleFromOptions(currentElement, additionalOptionsTickStyle);
+      });
+  }
 
   return this;
 };

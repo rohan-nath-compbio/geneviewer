@@ -1352,6 +1352,17 @@ GC_labels <- function(
 #' @param tickValuesBottom Numeric vector or NULL, custom tick values to be used
 #'   at the bottom of the cluster. If NULL, the default tick values are used.
 #' @param ticksFormat Format for tick labels. Default is ",.0f".
+#' @param group Optional character; column name used to identify genes for summary
+#'   coordinates. Defaults to the chart group if available.
+#' @param genes Optional character vector; subset of genes from \code{group} to use
+#'   when computing summary coordinates.
+#' @param summary_fun Character; one of \code{"none"}, \code{"mean"}, or
+#'   \code{"median"}. If not \code{"none"}, summary coordinates are computed per
+#'   gene and used as tick values.
+#' @param position Character; one of \code{"center"}, \code{"start"}, or
+#'   \code{"end"}. Defines the coordinate used before summarization.
+#' @param summary_axis Character; one of \code{"bottom"}, \code{"top"}, or
+#'   \code{"both"}, indicating where summary coordinates are rendered.
 #' @param cluster Numeric or character vector or NULL; specifies which clusters
 #' to generate coordinates for.
 #'        If NULL, labels will be applied to all clusters. Default is NULL.
@@ -1407,6 +1418,11 @@ GC_coordinates <- function(
     tickValuesTop = NULL,
     tickValuesBottom = NULL,
     ticksFormat = NULL,
+    group = NULL,
+    genes = NULL,
+    summary_fun = c("none", "mean", "median"),
+    position = c("center", "start", "end"),
+    summary_axis = c("bottom", "top", "both"),
     tickStyle = list(),
     textStyle = list(),
     cluster = NULL,
@@ -1419,11 +1435,16 @@ GC_coordinates <- function(
 
   # Capture ... arguments
   dots <- list(...)
+  summary_fun <- match.arg(summary_fun)
+  position <- match.arg(position)
+  summary_axis <- match.arg(summary_axis)
 
   # Update the GC_chart object with title and options for each cluster
   clusters <- getUpdatedClusters(GC_chart, cluster)
 
   for(i in seq_along(clusters)){
+    currentTickTop <- tickValuesTop
+    currentTickBottom <- tickValuesBottom
 
     # Default options
     options <- list(
@@ -1432,6 +1453,58 @@ GC_coordinates <- function(
       tickStyle = tickStyle,
       textStyle = textStyle
     )
+
+    # Build summary coordinates per gene if requested.
+    if (summary_fun != "none") {
+      current_data <- GC_chart$x$series[[clusters[i]]]$data
+      group_col <- group
+      if (is.null(group_col)) {
+        group_col <- GC_chart$x$series[[clusters[i]]]$genes$group
+      }
+      if (is.null(group_col)) {
+        group_col <- GC_chart$x$group
+      }
+
+      if (is.null(group_col) || !(group_col %in% names(current_data))) {
+        warning("Summary coordinates skipped: valid 'group' column not found.")
+      } else {
+        if (!is.null(genes)) {
+          current_data <- current_data[current_data[[group_col]] %in% genes, , drop = FALSE]
+        }
+
+        if (nrow(current_data) == 0) {
+          warning("Summary coordinates skipped: no matching rows after filtering.")
+        } else {
+          coordinate_values <- switch(
+            position,
+            start = current_data$start,
+            end = current_data$end,
+            center = (current_data$start + current_data$end) / 2
+          )
+
+          summary_values <- tapply(
+            coordinate_values,
+            current_data[[group_col]],
+            if (summary_fun == "mean") mean else stats::median,
+            na.rm = TRUE
+          )
+          summary_values <- as.numeric(summary_values)
+          summary_values <- unique(summary_values[is.finite(summary_values)])
+
+          if (length(summary_values) > 0) {
+            if (summary_axis %in% c("top", "both")) {
+              currentTickTop <- sort(summary_values)
+            }
+            if (summary_axis %in% c("bottom", "both")) {
+              currentTickBottom <- sort(summary_values)
+            }
+            if (is.null(ticksFormat)) {
+              options$ticksFormat <- ",.2f"
+            }
+          }
+        }
+      }
+    }
 
     # Add ... arguments to options
     for(name in names(dots)) {
@@ -1442,8 +1515,8 @@ GC_coordinates <- function(
     GC_chart$x$series[[clusters[i]]]$coordinates <- options
 
     # Add tickvalues for each cluster
-    GC_chart$x$series[[clusters[i]]]$coordinates$tickValuesTop <- tickValuesTop
-    GC_chart$x$series[[clusters[i]]]$coordinates$tickValuesBottom <- tickValuesBottom
+    GC_chart$x$series[[clusters[i]]]$coordinates$tickValuesTop <- currentTickTop
+    GC_chart$x$series[[clusters[i]]]$coordinates$tickValuesBottom <- currentTickBottom
 
   }
 
@@ -1453,6 +1526,191 @@ GC_coordinates <- function(
   }
 
   return(GC_chart)
+}
+
+#' Add Mean Coordinates to a GC Chart
+#'
+#' Convenience wrapper around \code{GC_coordinates()} to render mean gene
+#' coordinates as genomic ticks.
+#'
+#' @param GC_chart The GC chart object to be modified.
+#' @param group Optional character; column containing gene identifiers.
+#' @param genes Optional character vector of genes to include.
+#' @param position Character; one of \code{"center"}, \code{"start"}, or
+#'   \code{"end"}.
+#' @param axis Character; one of \code{"bottom"}, \code{"top"}, or
+#'   \code{"both"}.
+#' @param cluster Optional cluster selection.
+#' @param ... Additional options forwarded to \code{GC_coordinates()} (for
+#'   example \code{textStyle}, \code{tickStyle}, \code{showTop}, \code{showBottom}).
+#'
+#' @return Updated GC chart with mean coordinates.
+#' @export
+GC_meanCoordinate <- function(
+    GC_chart,
+    group = NULL,
+    genes = NULL,
+    position = c("center", "start", "end"),
+    axis = c("bottom", "top", "both"),
+    cluster = NULL,
+    ...
+) {
+  position <- match.arg(position)
+  axis <- match.arg(axis)
+
+  GC_coordinates(
+    GC_chart = GC_chart,
+    group = group,
+    genes = genes,
+    summary_fun = "mean",
+    position = position,
+    summary_axis = axis,
+    cluster = cluster,
+    ...
+  )
+}
+
+#' Apply a Synteny Visualization Theme
+#'
+#' High-level convenience helper to style a chart for synteny figures. It applies
+#' coordinated defaults for genes, labels, tracks, coordinates, links, and legend.
+#'
+#' @param GC_chart The GC chart object to be modified.
+#' @param group Optional grouping column for gene colors and labels.
+#' @param label Optional label column for \code{GC_labels()}.
+#' @param link_group Optional grouping column used by \code{GC_links()} when
+#'   \code{show_links = TRUE}.
+#' @param link_data Optional data.frame passed to \code{GC_links(data = ...)}.
+#' @param show_links Logical; whether to render links.
+#' @param measure Link measure for coloring/labeling (\code{"identity"},
+#'   \code{"similarity"}, \code{"none"}).
+#' @param show_link_labels Logical; whether to show link labels.
+#' @param link_curve Logical; whether links are curved.
+#' @param show_coordinates Logical; whether to show coordinates.
+#' @param coordinate_summary One of \code{"none"}, \code{"mean"}, \code{"median"}.
+#' @param coordinate_position One of \code{"center"}, \code{"start"}, \code{"end"}.
+#' @param coordinate_axis One of \code{"bottom"}, \code{"top"}, \code{"both"}.
+#' @param genes_for_coordinates Optional character vector of genes to summarize.
+#' @param show_legend Logical; whether to show legend.
+#' @param legend_position Legend position.
+#' @param colorScheme D3 color scheme used for genes.
+#' @param customColors Optional custom color mapping.
+#' @param marker Gene marker shape.
+#' @param marker_size Gene marker size.
+#' @param separate_strands Logical; separate forward/reverse tracks.
+#' @param prevent_gene_overlap Logical; split overlapping genes into tracks.
+#' @param overlap_spacing Numeric overlap track spacing.
+#' @param strand_spacing Numeric strand spacing.
+#' @param cluster_style CSS-like list applied to cluster container style.
+#' @param label_args Named list forwarded to \code{GC_labels()}.
+#' @param coordinate_textStyle Named list forwarded as \code{textStyle}.
+#' @param coordinate_tickStyle Named list forwarded as \code{tickStyle}.
+#' @param link_style Named list forwarded as \code{linkStyle}.
+#' @param link_label_style Named list forwarded as \code{labelStyle}.
+#'
+#' @return Updated GC chart with a synteny-oriented style stack.
+#' @export
+GC_syntenyTheme <- function(
+    GC_chart,
+    group = NULL,
+    label = NULL,
+    link_group = NULL,
+    link_data = NULL,
+    show_links = TRUE,
+    measure = "identity",
+    show_link_labels = FALSE,
+    link_curve = TRUE,
+    show_coordinates = TRUE,
+    coordinate_summary = c("none", "mean", "median"),
+    coordinate_position = c("center", "start", "end"),
+    coordinate_axis = c("bottom", "top", "both"),
+    genes_for_coordinates = NULL,
+    show_legend = TRUE,
+    legend_position = "bottom",
+    colorScheme = "schemeTableau10",
+    customColors = NULL,
+    marker = "arrow",
+    marker_size = "medium",
+    separate_strands = FALSE,
+    prevent_gene_overlap = TRUE,
+    overlap_spacing = 6,
+    strand_spacing = 8,
+    cluster_style = list(backgroundColor = "#fcfcfd"),
+    label_args = list(fontSize = "11px", cursor = "default"),
+    coordinate_textStyle = list(fontSize = "10px", fill = "#333333"),
+    coordinate_tickStyle = list(stroke = "#666666", strokeWidth = 1),
+    link_style = list(fillOpacity = 0.35, stroke = "#8a8a8a", strokeWidth = 0.5),
+    link_label_style = list(fontSize = "8px", fill = "#2b2b2b")
+) {
+  coordinate_summary <- match.arg(coordinate_summary)
+  coordinate_position <- match.arg(coordinate_position)
+  coordinate_axis <- match.arg(coordinate_axis)
+
+  if (is.null(group) && !is.null(GC_chart$x$group)) {
+    group <- GC_chart$x$group
+  }
+  if (is.null(label) && !is.null(group)) {
+    label <- group
+  }
+  if (is.null(link_group) && !is.null(group)) {
+    link_group <- group
+  }
+
+  GC_chart <- GC_genes(
+    GC_chart = GC_chart,
+    group = group,
+    marker = marker,
+    marker_size = marker_size,
+    colorScheme = colorScheme,
+    customColors = customColors
+  )
+
+  if (!is.null(label)) {
+    label_call <- c(list(GC_chart = GC_chart, label = label), label_args)
+    GC_chart <- do.call(GC_labels, label_call)
+  }
+
+  GC_chart <- GC_cluster(
+    GC_chart = GC_chart,
+    separate_strands = separate_strands,
+    strand_spacing = strand_spacing,
+    prevent_gene_overlap = prevent_gene_overlap,
+    overlap_spacing = overlap_spacing,
+    style = cluster_style
+  )
+
+  if (show_coordinates) {
+    GC_chart <- GC_coordinates(
+      GC_chart = GC_chart,
+      group = group,
+      genes = genes_for_coordinates,
+      summary_fun = coordinate_summary,
+      position = coordinate_position,
+      summary_axis = coordinate_axis,
+      textStyle = coordinate_textStyle,
+      tickStyle = coordinate_tickStyle
+    )
+  }
+
+  if (show_links && !is.null(link_group)) {
+    GC_chart <- GC_links(
+      GC_chart = GC_chart,
+      group = link_group,
+      data = link_data,
+      curve = link_curve,
+      measure = measure,
+      label = show_link_labels,
+      linkStyle = link_style,
+      labelStyle = link_label_style
+    )
+  }
+
+  GC_legend(
+    GC_chart = GC_chart,
+    show = show_legend,
+    group = group,
+    position = legend_position
+  )
 }
 
 

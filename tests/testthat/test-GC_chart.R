@@ -608,6 +608,81 @@ test_that("GC_coordinates updates coordinates with all options correctly", {
 
 })
 
+test_that("GC_coordinates can compute mean gene coordinates per cluster", {
+  genes_data <- data.frame(
+    start = c(10, 20, 100, 200),
+    end = c(30, 40, 130, 230),
+    gene = c("A", "A", "A", "A"),
+    cluster = c("c1", "c1", "c2", "c2")
+  )
+
+  chart <- GC_chart(genes_data, cluster = "cluster", group = "gene")
+
+  updated_chart <- GC_coordinates(
+    GC_chart = chart,
+    summary_fun = "mean",
+    position = "center",
+    summary_axis = "bottom",
+    group = "gene",
+    genes = "A",
+    showTop = FALSE,
+    showBottom = TRUE,
+    topTextAnchor = "middle",
+    bottomTextAnchor = "end",
+    topDx = -1,
+    bottomDx = 1
+  )
+
+  expect_equal(updated_chart$x$series$c1$coordinates$tickValuesBottom, 25)
+  expect_equal(updated_chart$x$series$c2$coordinates$tickValuesBottom, 165)
+  expect_equal(updated_chart$x$series$c1$coordinates$ticksFormat, ",.2f")
+  expect_false(updated_chart$x$series$c1$coordinates$showTop)
+  expect_true(updated_chart$x$series$c1$coordinates$showBottom)
+  expect_equal(updated_chart$x$series$c1$coordinates$topTextAnchor, "middle")
+  expect_equal(updated_chart$x$series$c1$coordinates$bottomTextAnchor, "end")
+})
+
+test_that("GC_meanCoordinate is a functional wrapper around GC_coordinates", {
+  genes_data <- data.frame(
+    start = c(1, 3, 10, 14),
+    end = c(2, 5, 12, 18),
+    gene = c("g1", "g1", "g1", "g1"),
+    cluster = c("a", "a", "b", "b")
+  )
+
+  chart <- GC_chart(genes_data, group = "gene", cluster = "cluster")
+  updated <- GC_meanCoordinate(chart, group = "gene", axis = "bottom")
+
+  expect_equal(updated$x$series$a$coordinates$tickValuesBottom, 2.75)
+  expect_equal(updated$x$series$b$coordinates$tickValuesBottom, 13.5)
+})
+
+test_that("GC_syntenyTheme applies synteny defaults", {
+  genes_data <- data.frame(
+    start = c(10, 40, 80, 12, 42, 82),
+    end = c(25, 55, 95, 27, 57, 97),
+    gene = c("A", "B", "C", "A", "B", "C"),
+    identity = c(NA, NA, NA, 95, 80, 75),
+    similarity = c(NA, NA, NA, 90, 70, 65),
+    cluster = c("c1", "c1", "c1", "c2", "c2", "c2")
+  )
+
+  chart <- GC_chart(genes_data, group = "gene", cluster = "cluster")
+  themed <- GC_syntenyTheme(
+    chart,
+    group = "gene",
+    link_group = "gene",
+    coordinate_summary = "mean",
+    coordinate_axis = "bottom"
+  )
+
+  expect_equal(themed$x$series$c1$genes$marker, "arrow")
+  expect_true(themed$x$series$c1$cluster$subset_data)
+  expect_equal(themed$x$legend$position, "bottom")
+  expect_true(length(themed$x$links) > 0)
+  expect_true(length(themed$x$series$c1$coordinates$tickValuesBottom) > 0)
+})
+
 # GC_genes test
 test_that("GC_genes updates gene characteristics with all options correctly", {
 
